@@ -1,0 +1,18 @@
+# demo subroutines
+export KUBECONFIG=${PREFIX}-aks.kubeconfig
+
+demo_do() {
+  local demo_action demo_opt TARGET
+  demo_action=$1
+  demo_opt=$2
+
+  case ${demo_opt} in
+  sc)   TARGET="azure-file-sc.yaml" ;;
+  pvc)  TARGET="azure-file-pvc.yaml" ;;
+  pod)  TARGET="azure-pvc-files.yaml" ;;
+  *)    usage ;;
+  esac
+  unset _opt
+
+  cmd kubectl "$demo_action" -f deploy/$TARGET
+}

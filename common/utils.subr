@@ -1,0 +1,81 @@
+# a series of common used utils
+
+# a wrapper around the command to be executed
+cmd() {
+  echo "\$ ${@}"
+  "$@" || err "Failed to execute: " "$@"
+}
+
+err() {
+  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: $*" >&2
+  exit 1
+}
+
+check_for_azure_login() {
+    # run a command against Azure to check if we are logged in already.
+    az group list -o none 
+    # save the return code from above. Anything different than 0 means we need to login
+    AZURE_LOGIN=$?
+
+    if [[ ${AZURE_LOGIN} -ne 0 ]]; then
+    # not logged in. Initiate login process
+        az login --use-device-code
+        export AZURE_LOGIN
+    fi
+}
+
+SSH_KEY_NAME=$PREFIX"_id_rsa"
+SSH_KEY_PATH="ssh_keys"
+export SSH_KEY_PATH SSH_KEY_NAME
+
+load_ssh_keys() {
+  # dont load ssh keys from the filesystem if 
+  # they were passed as environment variables.
+  if [[ -z "${SSH_PUB_KEY}" ]]; then
+    SSH_PRIV_KEY="$(cat ${SSH_KEY_PATH}/"${SSH_KEY_NAME}")"
+    SSH_PUB_KEY="$(cat $SSH_KEY_PATH/"${SSH_KEY_NAME}.pub")"
+    export SSH_PRIV_KEY SSH_PUB_KEY
+  fi
+}
+
+create_ssh_keys() {
+  # Generate ssh-key pair
+
+  # are we passing SSH keys as environment variables?
+  if [[ -n "${SSH_PUB_KEY}" ]]; then
+    echo "loading SSH public key from env"
+    export SSH_PUB_KEY
+  # if the keys already exist, don't bother creating them
+  elif [[ -f "${SSH_KEY_PATH}/${SSH_KEY_NAME}" ]]; then
+    echo "${SSH_KEY_PATH}/${SSH_KEY_NAME} exists. Skipping SSH Key Gen"
+    load_ssh_keys
+  else
+    echo "${SSH_KEY_PATH}/${SSH_KEY_NAME} does not exist...Generating SSH Key"
+    echo "Creating ssh key directory..."
+    mkdir -p ${SSH_KEY_PATH}
+    echo "Generating ssh key..."
+    ssh-keygen -f ${SSH_KEY_PATH}/"${SSH_KEY_NAME}" -N ''
+    chmod 400 ${SSH_KEY_PATH}/"${SSH_KEY_NAME}"
+
+    load_ssh_keys
+  fi
+}
+
+get_deployment_info() {
+  # Get the jump server public IP
+  JUMP_IP=$(jq -r '.jumpboxIP.value' ./outputs/"${RG_NAME}"-bicep-outputs.json)
+  export JUMP_IP
+}
+
+scp_to_jumpbox() {  
+  local FILE=$1
+  echo "copying ${FILE} to jumpbox"
+  scp -i "${SSH_KEY_PATH}/${SSH_KEY_NAME}"  -o "StrictHostKeyChecking no" "$FILE" "${ADMIN_USER_NAME}"@"${JUMP_IP}":~/ 
+}
+
+# Execute commands on the remote jump box
+run_on_jumpbox () {
+    # Get the jump server public IP
+    export JUMP_IP=$(jq -r .jumpboxIP.value ./outputs/$RG_NAME-bicep-outputs.json)
+    ssh -o "StrictHostKeyChecking no" -i $SSH_KEY_PATH/$SSH_KEY_NAME $ADMIN_USER_NAME@$JUMP_IP $1
+}

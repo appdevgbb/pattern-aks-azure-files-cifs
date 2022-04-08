@@ -1,0 +1,64 @@
+# create a resource group
+rg_create() {
+  cmd az group create --name "${RG_NAME}" --location "${LOCATION}"
+}
+
+# creates a service principal
+sp_create() {
+  cmd az ad sp create-for-rbac --name "sp-${RG_NAME}-${RANDOM}" --role Contributor >sp.env
+}
+
+# deploy the bicep templates
+cluster_deploy() {
+  echo "Deploying resources ..."
+  echo
+  cmd az deployment group create \
+    --name "${ARM_DEPLOYMENT_NAME}" \
+    --mode Incremental \
+    --resource-group "${RG_NAME}" \
+    --template-file "${BICEP_FILE}" \
+    --parameters prefix="${PREFIX}" \
+    --parameters location="${LOCATION}" 
+}
+
+check_cluster_creation() {
+  local deployment
+  deployment=$(az deployment group show \
+    --name "${ARM_DEPLOYMENT_NAME}" \
+    --resource-group "${RG_NAME}" \
+    --query properties.provisioningState)
+
+  if [[ "${deployment}" == "Succeeded" ]]; then
+    err "Resources did not deploy successfully."
+  fi
+}
+
+# save deployment logs
+cluster_logs() {
+  mkdir -p outputs
+  az deployment group show \
+    --name "${ARM_DEPLOYMENT_NAME}" \
+    --resource-group "${RG_NAME}" \
+    -o json \
+    --query properties.outputs > ./outputs/$RG_NAME-bicep-outputs.json
+}
+
+cluster_dry_run() {
+  echo "testing the deployment"
+  cmd az deployment group what-if \
+    --name "${ARM_DEPLOYMENT_NAME}" \
+    --mode Incremental \
+    --resource-group "${RG_NAME}" \
+    --template-file "${BICEP_FILE}" \
+    --parameters prefix="${PREFIX}" \
+    --parameters location="${LOCATION}" 
+}
+
+aks_get_credentials() {
+  cmd az aks get-credentials \
+    --name "${PREFIX}"-aks \
+    --resource-group "${RG_NAME}" \
+    --file "${PREFIX}"-aks.kubeconfig
+
+  export KUBECONFIG="${PREFIX}"-aks.kubeconfig
+}
