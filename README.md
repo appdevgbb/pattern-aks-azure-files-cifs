@@ -8,7 +8,7 @@ Please refer to this documentation for more details: [Dynamically create and use
 
 To install the full solution:
 
-1. Chance the ```run.rc``` file to reflect your environment
+1. Change the ```run.rc``` file to reflect your environment
 2. Run:
 ```bash
 ./run.sh -x install
